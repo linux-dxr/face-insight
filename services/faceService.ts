@@ -6,6 +6,7 @@ const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 
 // Track model loading status to prevent duplicate loads
 let modelsLoaded = false;
+let modelLoadingPromise: Promise<void> | null = null;
 
 export const loadModels = async (): Promise<void> => {
   // If models are already loaded, return immediately
@@ -14,20 +15,33 @@ export const loadModels = async (): Promise<void> => {
     return;
   }
   
-  try {
-    console.log("开始加载人脸检测模型...");
-    await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-      faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
-    ]);
-    
-    modelsLoaded = true;
-    console.log("人脸检测模型加载完成");
-  } catch (error) {
-    console.error("Failed to load face-api models", error);
-    throw new Error("Failed to load face detection models.");
+  // If models are currently loading, return the existing promise
+  if (modelLoadingPromise) {
+    console.log("Models are already loading, waiting for completion...");
+    return modelLoadingPromise;
   }
+  
+  // Start loading models and store the promise
+  modelLoadingPromise = (async () => {
+    try {
+      console.log("开始加载人脸检测模型...");
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+        faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+      ]);
+      
+      modelsLoaded = true;
+      console.log("人脸检测模型加载完成");
+    } catch (error) {
+      console.error("Failed to load face-api models", error);
+      // Reset promise on failure so it can be retried
+      modelLoadingPromise = null;
+      throw new Error("Failed to load face detection models.");
+    }
+  })();
+  
+  return modelLoadingPromise;
 };
 
 export const detectFace = async (video: HTMLVideoElement): Promise<FaceDetectionData | null> => {

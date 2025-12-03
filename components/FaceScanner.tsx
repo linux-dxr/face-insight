@@ -62,6 +62,24 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
       }
     }, [onAnalysisComplete, selectedModel]);
 
+    // Function to manually trigger model loading
+    const handleLoadModels = useCallback(async () => {
+      if (status === DetectionStatus.LOADING_MODELS) {
+        // Already loading, do nothing
+        return;
+      }
+      
+      setStatus(DetectionStatus.LOADING_MODELS);
+      try {
+        await faceService.loadModels();
+        setStatus(DetectionStatus.DETECTING);
+      } catch (err) {
+        console.error("模型加载失败:", err);
+        setError("模型加载失败，请刷新页面重试。");
+        setStatus(DetectionStatus.ERROR);
+      }
+    }, [status]);
+
     // Expose the triggerAnalysis function to parent component
     useImperativeHandle(ref, () => ({
       triggerAnalysis: handleCaptureAndAnalyze
@@ -279,16 +297,6 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
             throw new Error("您的浏览器不支持摄像头访问功能。");
           }
 
-          // Start loading models in background immediately
-          const modelLoadingPromise = faceService.loadModels().then(() => {
-            console.log("模型加载完成");
-            setStatus(DetectionStatus.DETECTING);
-          }).catch(err => {
-            console.error("模型加载失败:", err);
-            // Still allow camera usage even if models fail
-            setStatus(DetectionStatus.DETECTING);
-          });
-
           // Check if user wants to use mock camera
           if (mockCameraEnabled) {
             console.log("用户选择使用模拟摄像头");
@@ -307,6 +315,16 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
             }, 100);
             return;
           }
+
+          // Start loading models in background immediately
+          const modelLoadingPromise = faceService.loadModels().then(() => {
+            console.log("模型加载完成");
+            setStatus(DetectionStatus.DETECTING);
+          }).catch(err => {
+            console.error("模型加载失败:", err);
+            // Still allow camera usage even if models fail
+            setStatus(DetectionStatus.DETECTING);
+          });
 
           // Try to access the camera with minimal constraints for fastest initialization
           const videoConstraints = {
@@ -475,6 +493,19 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
             >
               使用模拟摄像头
             </button>
+            
+            {/* Reload models button */}
+            <button
+              onClick={handleLoadModels}
+              disabled={status === DetectionStatus.LOADING_MODELS}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                status === DetectionStatus.LOADING_MODELS
+                  ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                  : 'bg-green-600 hover:bg-green-700 text-white'
+              }`}
+            >
+              {status === DetectionStatus.LOADING_MODELS ? '模型加载中...' : '重新加载模型'}
+            </button>
           </div>
         </div>
       );
@@ -538,10 +569,10 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
               <p className="text-sm font-medium">
                 {status === DetectionStatus.LOADING_MODELS ? '正在加载面部识别模型...' : '正在初始化摄像头...'}
               </p>
-              <p className="text-xs text-gray-400 mt-2">
+              <p className="text-xs text-gray-400 mt-2 text-center px-4">
                 {status === DetectionStatus.LOADING_MODELS 
                   ? '这可能需要几秒钟时间，请耐心等待...' 
-                  : '正在尝试访问摄像头设备，请稍候...'}
+                  : '正在尝试访问摄像头设备，请稍候...\n如果长时间无响应，请检查摄像头权限设置。'}
               </p>
             </div>
           )}
