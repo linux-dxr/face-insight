@@ -1,0 +1,8 @@
+{
+  "name": "Face Insight",
+  "description": "A professional face recognition and analysis application combining real-time client-side tracking with Gemini 2.5 deep visual analysis.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

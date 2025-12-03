@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>面部洞察分析</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: '#0f172a',
+              secondary: '#1e293b',
+              accent: '#38bdf8',
+            },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+          },
+        },
+      }
+    </script>
+    <style>
+      /* Custom scrollbar for webkit */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0f172a; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #334155; 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #475569; 
+      }
+      
+      /* Firefox scrollbar */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: #334155 #0f172a;
+      }
+      
+      /* Force scrollbar visibility */
+      html {
+        overflow-y: scroll;
+      }
+      
+      /* Ensure content areas have scrollbars */
+      .overflow-y-auto {
+        overflow-y: scroll !important;
+      }
+    </style>
+  </head>
+  <body class="bg-primary text-white">
+    <div id="root"></div>
+    <script>
+      // GitHub Pages SPA 路由修复
+      (function() {
+        // 将当前路径存储到 sessionStorage
+        var path = location.pathname;
+        if (path !== '/' && path !== '/face-insight/') {
+          sessionStorage.setItem('redirect', path);
+        }
+        // 重定向到主页
+        location.replace('/face-insight/');
+      })();
+    </script>
+  </body>
+</html>
