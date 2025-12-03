@@ -189,6 +189,27 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
       }, 100);
     };
 
+    // Function to switch to mock camera with error handling
+    const switchToMockCameraWithErrorHandling = () => {
+      try {
+        const mockStream = createMockCameraStream();
+        setStream(mockStream);
+        setIsMockCamera(true);
+        setCameraReady(true);
+        setStatus(DetectionStatus.LOADING_MODELS); // Set to loading models state
+        // Set the mock stream to video element after a short delay
+        setTimeout(() => {
+          if (videoRef.current) {
+            videoRef.current.srcObject = mockStream;
+            videoRef.current.play().catch(e => console.error("播放模拟流失败:", e));
+          }
+        }, 100);
+      } catch (mockErr) {
+        console.error("模拟摄像头初始化也失败了:", mockErr);
+        setError("摄像头和模拟摄像头都无法初始化。请刷新页面重试。");
+      }
+    };
+
     // Function to switch back to real camera
     const switchToRealCamera = async () => {
       // Clean up existing stream
@@ -258,6 +279,16 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
             throw new Error("您的浏览器不支持摄像头访问功能。");
           }
 
+          // Start loading models in background immediately
+          const modelLoadingPromise = faceService.loadModels().then(() => {
+            console.log("模型加载完成");
+            setStatus(DetectionStatus.DETECTING);
+          }).catch(err => {
+            console.error("模型加载失败:", err);
+            // Still allow camera usage even if models fail
+            setStatus(DetectionStatus.DETECTING);
+          });
+
           // Check if user wants to use mock camera
           if (mockCameraEnabled) {
             console.log("用户选择使用模拟摄像头");
@@ -266,7 +297,7 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
             setStream(mockStream);
             setIsMockCamera(true);
             setCameraReady(true);
-            setStatus(DetectionStatus.DETECTING);
+            setStatus(DetectionStatus.LOADING_MODELS); // Set to loading models state
             // Set the mock stream to video element after a short delay
             setTimeout(() => {
               if (videoRef.current) {
@@ -298,6 +329,7 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
               .then(() => {
                 console.log("摄像头成功启动");
                 setCameraReady(true);
+                setStatus(DetectionStatus.LOADING_MODELS); // Set to loading models state
               })
               .catch(e => {
                 console.error("摄像头播放失败:", e);
@@ -306,6 +338,7 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
                 setStream(mockStream);
                 setIsMockCamera(true);
                 setCameraReady(true);
+                setStatus(DetectionStatus.LOADING_MODELS); // Set to loading models state
                 setTimeout(() => {
                   if (videoRef.current) {
                     videoRef.current.srcObject = mockStream;
@@ -314,40 +347,43 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
                 }, 100);
               });
           }
-          
-          // Start loading models in background after camera is initialized
-          faceService.loadModels().then(() => {
-            setStatus(DetectionStatus.DETECTING);
-          }).catch(err => {
-            console.error("模型加载失败:", err);
-            // Still allow camera usage even if models fail
-            setStatus(DetectionStatus.DETECTING);
-          });
         } catch (err: any) {
           console.error("摄像头初始化错误:", err);
           
           // Provide more specific error messages
           if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            setError("摄像头访问权限被拒绝。请允许网页访问摄像头。");
+            setError("摄像头访问权限被拒绝。请允许网页访问摄像头。点击下方按钮重试或切换到模拟摄像头。");
+          } else if (err.name === 'NotFoundError' || err.name === 'DeviceNotFoundError') {
+            setError("未找到可用的摄像头设备。请检查设备连接或切换到模拟摄像头。");
           } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-            setError("摄像头已被其他应用占用。请关闭其他使用摄像头的应用。");
+            setError("摄像头已被其他应用占用。请关闭其他使用摄像头的应用，然后刷新页面重试。");
           } else if (err.name === 'OverconstrainedError' || err.name === 'ConstraintNotSatisfiedError') {
-            setError("摄像头不支持请求的分辨率。");
+            // Try again with default constraints
+            console.log("摄像头不支持请求的分辨率，尝试使用默认设置");
+            try {
+              const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
+              setStream(fallbackStream);
+              if (videoRef.current) {
+                videoRef.current.srcObject = fallbackStream;
+                videoRef.current.play()
+                  .then(() => {
+                    console.log("摄像头成功启动（使用默认设置）");
+                    setCameraReady(true);
+                    setStatus(DetectionStatus.LOADING_MODELS);
+                  })
+                  .catch(e => {
+                    throw e; // Re-throw to use fallback handling below
+                  });
+              }
+            } catch (fallbackErr) {
+              console.error("使用默认设置仍然失败:", fallbackErr);
+              // Fallback to mock camera
+              switchToMockCameraWithErrorHandling();
+            }
           } else {
             // Fallback to mock camera on any other error
             console.log("摄像头初始化失败，切换到模拟摄像头");
-            const mockStream = createMockCameraStream();
-            setStream(mockStream);
-            setIsMockCamera(true);
-            setCameraReady(true);
-            setStatus(DetectionStatus.DETECTING);
-            // Set the mock stream to video element after a short delay
-            setTimeout(() => {
-              if (videoRef.current) {
-                videoRef.current.srcObject = mockStream;
-                videoRef.current.play().catch(e => console.error("播放模拟流失败:", e));
-              }
-            }, 100);
+            switchToMockCameraWithErrorHandling();
           }
         }
       };
@@ -417,16 +453,29 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
           <p className="text-xl font-medium mb-2">摄像头错误</p>
           <p className="text-gray-300 text-center mb-6">{error}</p>
           
-          {/* Retry button */}
-          <button
-            onClick={() => {
-              setError(null);
-              setMockCameraEnabled(true); // Switch to mock camera on retry
-            }}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-          >
-            切换到模拟摄像头
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3">
+            {/* Retry button */}
+            <button
+              onClick={() => {
+                setError(null);
+                window.location.reload(); // Refresh the page to retry
+              }}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+            >
+              刷新页面重试
+            </button>
+            
+            {/* Switch to mock camera button */}
+            <button
+              onClick={() => {
+                setError(null);
+                setMockCameraEnabled(true); // Switch to mock camera on retry
+              }}
+              className="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
+            >
+              使用模拟摄像头
+            </button>
+          </div>
         </div>
       );
     }
@@ -482,11 +531,18 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
 
         {/* Video Container */}
         <div className="relative w-full aspect-video rounded-xl overflow-hidden border-2 border-secondary shadow-2xl bg-black">
-          {/* Camera initialization state - only show when camera is actually initializing */}
+          {/* Camera initialization state - show different messages based on current status */}
           {!cameraReady && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-50 text-white">
               <RefreshCw className="w-8 h-8 animate-spin text-accent mb-2" />
-              <p className="text-sm font-medium">正在初始化摄像头...</p>
+              <p className="text-sm font-medium">
+                {status === DetectionStatus.LOADING_MODELS ? '正在加载面部识别模型...' : '正在初始化摄像头...'}
+              </p>
+              <p className="text-xs text-gray-400 mt-2">
+                {status === DetectionStatus.LOADING_MODELS 
+                  ? '这可能需要几秒钟时间，请耐心等待...' 
+                  : '正在尝试访问摄像头设备，请稍候...'}
+              </p>
             </div>
           )}
           
@@ -536,9 +592,9 @@ const FaceScanner = forwardRef<{ triggerAnalysis: () => void }, FaceScannerProps
               {/* Model status indicator */}
               <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-sm px-3 py-1 rounded-full border border-white/10">
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${status === DetectionStatus.DETECTING ? 'bg-green-500 animate-pulse' : status === DetectionStatus.LOADING_MODELS ? 'bg-yellow-500' : 'bg-red-500'}`} />
+                  <div className={`w-2 h-2 rounded-full ${status === DetectionStatus.DETECTING ? 'bg-green-500 animate-pulse' : status === DetectionStatus.LOADING_MODELS ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'}`} />
                   <span className="text-xs font-mono text-gray-200">
-                     {status === DetectionStatus.DETECTING ? '模型已就绪' : status === DetectionStatus.LOADING_MODELS ? '模型加载中' : '模型离线'}
+                     {status === DetectionStatus.DETECTING ? '模型已就绪' : status === DetectionStatus.LOADING_MODELS ? '模型加载中...' : '模型离线'}
                   </span>
                 </div>
               </div>
